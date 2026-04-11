@@ -1,0 +1,539 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Agent Game Harness — smoke tests</title>
+    <link rel="stylesheet" href="/shared/styles.css" />
+    <style>
+      /*
+        Dev-only smoke-test page. Self-contained: fetches the public
+        surfaces, boots /game?mock=1 in an iframe, and asserts the
+        contracts documented in ARCHITECTURE.md + TASKS.md + the
+        fork's AGENT_HARNESS.md §4/§5.
+
+        This is NOT a production test framework. It is a fast, visible
+        pass/fail grid for harness work. Open at /dev-tools/smoke.html.
+      */
+      body.page-smoke {
+        padding: 20px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      }
+      .smoke__title {
+        font-size: 18px;
+        margin: 0 0 4px;
+      }
+      .smoke__sub {
+        font-size: 12px;
+        color: #8aa;
+        margin: 0 0 16px;
+      }
+      .smoke__summary {
+        display: inline-block;
+        padding: 6px 12px;
+        border-radius: 4px;
+        background: #162;
+        color: #dfd;
+        font-weight: 600;
+        margin-bottom: 16px;
+      }
+      .smoke__summary--fail {
+        background: #521;
+        color: #fdd;
+      }
+      .smoke__summary--running {
+        background: #235;
+        color: #def;
+      }
+      .smoke__suite {
+        margin: 16px 0;
+        border: 1px solid #234;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+      .smoke__suite h2 {
+        margin: 0;
+        padding: 8px 12px;
+        font-size: 13px;
+        background: #0e1a22;
+        color: #9bd;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+      }
+      .smoke__suite table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 12px;
+      }
+      .smoke__suite td {
+        padding: 4px 12px;
+        border-top: 1px solid #112;
+        vertical-align: top;
+      }
+      .smoke__suite td.smoke__status {
+        width: 28px;
+        text-align: center;
+        font-weight: 700;
+      }
+      tr.pass td.smoke__status { color: #6f6; }
+      tr.fail td.smoke__status { color: #f66; }
+      .smoke__details {
+        color: #789;
+        font-size: 11px;
+      }
+      .smoke__rerun {
+        margin-left: 12px;
+        padding: 4px 10px;
+        background: #234;
+        color: #cde;
+        border: 1px solid #456;
+        border-radius: 3px;
+        cursor: pointer;
+        font-family: inherit;
+        font-size: 12px;
+      }
+      .smoke__rerun:hover { background: #345; }
+      .smoke__frame {
+        width: 1px;
+        height: 1px;
+        position: absolute;
+        left: -9999px;
+        top: -9999px;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body class="page page-smoke">
+    <h1 class="smoke__title">agent-game-harness — smoke tests</h1>
+    <p class="smoke__sub">
+      Contract checks for routes, the agent brief, <code>/game?mock=1</code>
+      telemetry, the <code>__scummMock</code> API, and <code>/status</code>.
+      Re-run after harness or mock changes.
+      <button class="smoke__rerun" onclick="window.location.reload()">↻ rerun</button>
+    </p>
+
+    <div id="summary" class="smoke__summary smoke__summary--running">running…</div>
+
+    <div id="suites"></div>
+
+    <!-- Hidden iframe used to host /game?mock=1 for live contract tests. -->
+    <iframe id="game-frame" class="smoke__frame" src="about:blank" title="game harness under test"></iframe>
+
+    <script type="module">
+      // ---------------------------------------------------------------
+      // Tiny test DSL. A "suite" is { name, run: async (t) => void }.
+      // t.pass(name, bool, details?) records a result.
+      // ---------------------------------------------------------------
+      const suites = [];
+      function suite(name, run) { suites.push({ name, run }); }
+
+      function makeRecorder() {
+        const results = [];
+        return {
+          pass(name, ok, details) {
+            results.push({ name, pass: !!ok, details: details ?? null });
+          },
+          results,
+        };
+      }
+
+      function renderSuite(container, suiteName, results) {
+        const wrap = document.createElement("section");
+        wrap.className = "smoke__suite";
+        const h = document.createElement("h2");
+        const passed = results.filter((r) => r.pass).length;
+        h.textContent = `${suiteName}  —  ${passed}/${results.length}`;
+        wrap.appendChild(h);
+        const tbl = document.createElement("table");
+        for (const r of results) {
+          const tr = document.createElement("tr");
+          tr.className = r.pass ? "pass" : "fail";
+          const status = document.createElement("td");
+          status.className = "smoke__status";
+          status.textContent = r.pass ? "✓" : "✗";
+          tr.appendChild(status);
+          const name = document.createElement("td");
+          name.textContent = r.name;
+          if (r.details) {
+            const d = document.createElement("div");
+            d.className = "smoke__details";
+            d.textContent = typeof r.details === "string"
+              ? r.details
+              : JSON.stringify(r.details);
+            name.appendChild(d);
+          }
+          tr.appendChild(name);
+          tbl.appendChild(tr);
+        }
+        wrap.appendChild(tbl);
+        container.appendChild(wrap);
+      }
+
+      // ---------------------------------------------------------------
+      // Suite 1: static routes and shared assets
+      // ---------------------------------------------------------------
+      suite("Routes & assets return 200", async (t) => {
+        const urls = [
+          "/",
+          "/routes/index.html",
+          "/routes/game.html",
+          "/routes/game.html?mock=1",
+          "/routes/status.html",
+          "/shared/styles.css",
+          "/shared/bridge.js",
+          "/shared/overlay.js",
+          "/shared/state-panel.js",
+          "/shared/mock.js",
+          "/shared/agent-brief.js",
+        ];
+        for (const u of urls) {
+          try {
+            const r = await fetch(u, { method: "GET", cache: "no-store" });
+            t.pass(`GET ${u}`, r.ok, { status: r.status });
+          } catch (e) {
+            t.pass(`GET ${u}`, false, { error: String(e) });
+          }
+        }
+      });
+
+      // ---------------------------------------------------------------
+      // Suite 2: home page agent brief contract
+      // ---------------------------------------------------------------
+      suite("Home page #agent-brief contract", async (t) => {
+        const html = await (await fetch("/routes/index.html")).text();
+        const doc = new DOMParser().parseFromString(html, "text/html");
+        const node = doc.getElementById("agent-brief");
+        t.pass("#agent-brief node exists", !!node);
+        let brief = null;
+        try {
+          brief = JSON.parse(node.textContent);
+          t.pass("#agent-brief parses as JSON", true);
+        } catch (e) {
+          t.pass("#agent-brief parses as JSON", false, { error: String(e) });
+          return;
+        }
+        t.pass("version is 2", brief.version === 2, { got: brief.version });
+        t.pass("gameRoute === /game", brief.gameRoute === "/game");
+        t.pass("mockRoute === /game?mock=1", brief.mockRoute === "/game?mock=1");
+        t.pass("stateSources.window === __scummState",
+          brief.stateSources?.window === "__scummState");
+        t.pass("stateSources.domNodeId === scumm-state",
+          brief.stateSources?.domNodeId === "scumm-state");
+        t.pass("consoleTags includes SCUMM_STATE",
+          brief.stateSources?.consoleTags?.includes("SCUMM_STATE"));
+        t.pass("consoleTags includes SCUMM_EVENT",
+          brief.stateSources?.consoleTags?.includes("SCUMM_EVENT"));
+        t.pass("schema.snapshotVersion === 1",
+          brief.schema?.snapshotVersion === 1);
+        t.pass("events.kinds has 1..5",
+          brief.events?.kinds &&
+            ["1", "2", "3", "4", "5"].every((k) => brief.events.kinds[k]));
+        t.pass("policies has >=5 entries",
+          Array.isArray(brief.policies) && brief.policies.length >= 5);
+        t.pass("links to /game present",
+          /href="\/game"/.test(html));
+        t.pass("links to /game?mock=1 present",
+          /href="\/game\?mock=1"/.test(html));
+      });
+
+      // ---------------------------------------------------------------
+      // Helper: boot /game?mock=1 in the hidden iframe and wait until
+      // the mock has published at least one real snapshot
+      // (window.__scummState.gameName === "mock").
+      // ---------------------------------------------------------------
+      function bootGameFrame(url) {
+        return new Promise((resolve, reject) => {
+          const frame = document.getElementById("game-frame");
+          const timeout = setTimeout(() => {
+            reject(new Error("timed out booting " + url));
+          }, 8000);
+
+          frame.addEventListener(
+            "load",
+            () => {
+              const w = frame.contentWindow;
+              // Wait for the mock to publish a real snapshot. The HTML
+              // placeholder has gameName === null; the mock sets it to
+              // "mock" on first tick.
+              const started = Date.now();
+              (function wait() {
+                if (Date.now() - started > 6000) {
+                  clearTimeout(timeout);
+                  reject(new Error("mock never published a real snapshot"));
+                  return;
+                }
+                if (
+                  w.__scummState &&
+                  w.__scummState.gameName === "mock" &&
+                  w.__scummMock
+                ) {
+                  clearTimeout(timeout);
+                  resolve(frame);
+                  return;
+                }
+                setTimeout(wait, 50);
+              })();
+            },
+            { once: true }
+          );
+          frame.src = url;
+        });
+      }
+
+      // ---------------------------------------------------------------
+      // Suite 3: /game?mock=1 contract (bridge, state, DOM mirror,
+      // overlay, panel, CustomEvents, runtime-not-built banner).
+      // ---------------------------------------------------------------
+      suite("/game?mock=1 contract", async (t) => {
+        const frame = await bootGameFrame("/routes/game.html?mock=1");
+        const w = frame.contentWindow;
+        const d = frame.contentDocument;
+
+        t.pass("window.__scummPublish is function", typeof w.__scummPublish === "function");
+        t.pass("window.__scummEmit is function", typeof w.__scummEmit === "function");
+        t.pass("window.__scummRead is function", typeof w.__scummRead === "function");
+        t.pass("window.__scummHistory is function", typeof w.__scummHistory === "function");
+        t.pass("window.__scummEvents is function", typeof w.__scummEvents === "function");
+        t.pass("window.__scummMock is exposed (mock only)",
+          w.__scummMock && typeof w.__scummMock.clickObjectById === "function");
+
+        const s = w.__scummState;
+        t.pass("__scummState exists", !!s);
+        t.pass("schema === 1", s?.schema === 1);
+        t.pass("mock === true", s?.mock === true);
+        t.pass("gameName === 'mock'", s?.gameName === "mock");
+        t.pass("roomObjects is array", Array.isArray(s?.roomObjects));
+        t.pass("verbs length > 0", Array.isArray(s?.verbs) && s.verbs.length > 0);
+        t.pass("ego.pos has numeric x", typeof s?.ego?.pos?.x === "number");
+
+        // DOM mirror
+        const domNode = d.getElementById("scumm-state");
+        t.pass("#scumm-state node exists", !!domNode);
+        let domState = null;
+        try { domState = JSON.parse(domNode.textContent); t.pass("#scumm-state parses as JSON", true); }
+        catch (e) { t.pass("#scumm-state parses as JSON", false, { error: String(e) }); }
+        t.pass("#scumm-state.schema === 1", domState?.schema === 1);
+        t.pass("#scumm-state.room matches __scummState.room",
+          domState?.room === s?.room);
+
+        // Regression: "ScummVM runtime not built" banner must be hidden
+        // in mock mode. The `hidden` attribute must actually hide it
+        // (the author rule .game__missing[hidden]{display:none} is what
+        // makes the UA `hidden` attribute win over display:flex).
+        const banner = d.getElementById("scumm-missing");
+        t.pass("runtime-not-built banner exists", !!banner);
+        t.pass("banner has hidden attribute", banner?.hasAttribute("hidden"));
+        t.pass("banner computed display is 'none'",
+          w.getComputedStyle(banner).display === "none");
+
+        // Overlay
+        const overlayBoxes = d.querySelectorAll("#scumm-overlay .overlay-box");
+        t.pass("one .overlay-box per roomObject",
+          overlayBoxes.length === s.roomObjects.length,
+          { got: overlayBoxes.length, want: s.roomObjects.length });
+        const overlayIds = Array.from(overlayBoxes)
+          .map((b) => Number(b.getAttribute("data-object-id")))
+          .sort((a, b) => a - b);
+        const roomIds = s.roomObjects.map((o) => o.id).sort((a, b) => a - b);
+        t.pass("overlay box ids match roomObject ids",
+          JSON.stringify(overlayIds) === JSON.stringify(roomIds),
+          { overlayIds, roomIds });
+        const clickable = Array.from(overlayBoxes).filter((b) =>
+          b.classList.contains("overlay-box--click")
+        ).length;
+        const touchable = s.roomObjects.filter((o) => !o.untouchable).length;
+        t.pass("clickable box count equals touchable objects count",
+          clickable === touchable, { clickable, touchable });
+
+        // State panel
+        const panelText = d.getElementById("scumm-panel").textContent;
+        t.pass("panel has 'schema'", /schema/i.test(panelText));
+        t.pass("panel has verb count badge", /verbs \(\d+\)/i.test(panelText));
+        t.pass("panel has inventory count badge", /inventory \(\d+\)/i.test(panelText));
+        t.pass("panel has roomObjects count badge", /roomObjects \(\d+\)/i.test(panelText));
+        t.pass("panel lists 'Pick up' verb", /Pick up/.test(panelText));
+
+        // CustomEvent fires
+        const sawState = await new Promise((resolve) => {
+          const to = setTimeout(() => resolve(false), 1500);
+          w.addEventListener("scumm:state", function once() {
+            clearTimeout(to);
+            w.removeEventListener("scumm:state", once);
+            resolve(true);
+          });
+        });
+        t.pass("scumm:state CustomEvent fires within 1.5s", sawState);
+
+        // seq monotonic
+        const seqBefore = w.__scummState.seq;
+        await new Promise((r) => setTimeout(r, 800)); // > mock TICK_MS
+        const seqAfter = w.__scummState.seq;
+        t.pass("seq increments over time", seqAfter > seqBefore,
+          { seqBefore, seqAfter });
+
+        t.pass("__scummHistory() is non-empty",
+          w.__scummHistory().length > 0);
+        t.pass("__scummEvents() is non-empty",
+          w.__scummEvents().length > 0);
+      });
+
+      // ---------------------------------------------------------------
+      // Suite 4: __scummMock API behavior. Drives the mock as an agent
+      // would (verb + click) and asserts the v1 event kinds fire.
+      // ---------------------------------------------------------------
+      suite("__scummMock API behavior", async (t) => {
+        const frame = document.getElementById("game-frame");
+        // Reboot to get a clean state for this suite.
+        await bootGameFrame("/routes/game.html?mock=1");
+        const w = frame.contentWindow;
+        const M = w.__scummMock;
+        const getState = () => w.__scummState;
+
+        const seenKinds = [];
+        const onEvt = (e) => seenKinds.push(e.detail?.kind);
+        w.addEventListener("scumm:event", onEvt);
+
+        // Pick up (slot 4 -> id 103)
+        M.activateVerbBySlot(4);
+        let s = getState();
+        t.pass("activateVerbBySlot(4) sets sentence.verb to 103",
+          s.sentence.verb === 103, { verb: s.sentence.verb });
+        t.pass("sentence.active === true", s.sentence.active === true);
+
+        // Pick up rope (id 11, touchable)
+        const invBefore = getState().inventory.length;
+        M.clickObjectById(11);
+        s = getState();
+        t.pass("rope lands in inventory after Pick up click",
+          s.inventory.some((i) => i.id === 11));
+        t.pass("inventory length increased by 1",
+          s.inventory.length === invBefore + 1);
+
+        // Untouchable guard: sign (id 14)
+        M.activateVerbBySlot(4);
+        const invBefore2 = getState().inventory.length;
+        M.clickObjectById(14);
+        s = getState();
+        t.pass("untouchable sign NOT added to inventory",
+          !s.inventory.some((i) => i.id === 14));
+        t.pass("inventory length unchanged after untouchable click",
+          s.inventory.length === invBefore2);
+
+        // goToRoom(2) transitions to Ship Deck + overlay refreshes
+        M.goToRoom(2);
+        await new Promise((r) => setTimeout(r, 600));
+        s = getState();
+        t.pass("state.room === 2 after goToRoom(2)", s.room === 2);
+        t.pass("Ship Deck has 4 roomObjects", s.roomObjects.length === 4);
+        t.pass("Ship Deck has 'wheel' and 'captain'",
+          s.roomObjects.some((o) => o.name === "wheel") &&
+            s.roomObjects.some((o) => o.name === "captain"));
+        const overlayIds = Array.from(
+          frame.contentDocument.querySelectorAll("#scumm-overlay .overlay-box")
+        ).map((b) => Number(b.getAttribute("data-object-id"))).sort((a, b) => a - b);
+        const want = s.roomObjects.map((o) => o.id).sort((a, b) => a - b);
+        t.pass("overlay refreshed to Ship Deck object ids",
+          JSON.stringify(overlayIds) === JSON.stringify(want),
+          { overlayIds, want });
+
+        // Door click takes us back to docks. Use Look at so we don't
+        // side-effect inventory.
+        M.activateVerbBySlot(5);
+        M.clickObjectById(24); // "door to docks"
+        await new Promise((r) => setTimeout(r, 600));
+        s = getState();
+        t.pass("door-to-docks click transitioned to room 1", s.room === 1);
+
+        // Event kinds observed
+        t.pass("roomChanged (kind=1) observed", seenKinds.includes(1));
+        t.pass("hoverChanged (kind=2) observed", seenKinds.includes(2));
+        t.pass("inventoryChanged (kind=3) observed", seenKinds.includes(3));
+        t.pass("sentenceChanged (kind=4) observed", seenKinds.includes(4));
+
+        w.removeEventListener("scumm:event", onEvt);
+      });
+
+      // ---------------------------------------------------------------
+      // Suite 5: /status reads the sessionStorage bridge state written
+      // by the prior /game session. Smoke test uses the same iframe's
+      // session (same origin, same tab context via iframe navigation).
+      // ---------------------------------------------------------------
+      suite("/status reflects last /game session", async (t) => {
+        const frame = document.getElementById("game-frame");
+        // Navigate the iframe to /status (in the same tab context so
+        // sessionStorage is shared with the /game session we just
+        // exercised above).
+        await new Promise((resolve) => {
+          frame.addEventListener("load", () => resolve(), { once: true });
+          frame.src = "/routes/status.html";
+        });
+        const d = frame.contentDocument;
+
+        // Give the inline script in status.html a tick to run.
+        await new Promise((r) => setTimeout(r, 50));
+
+        const buildEl = d.getElementById("status-build");
+        t.pass("status-build mentions harness name",
+          /agent-game-harness/.test(buildEl.textContent));
+        t.pass("status-build mentions version 0.1.0",
+          /0\.1\.0/.test(buildEl.textContent));
+
+        const snapEl = d.getElementById("status-snapshot");
+        t.pass("snapshot not empty placeholder",
+          snapEl.textContent !== "(no snapshot yet)" &&
+            snapEl.textContent.length > 10);
+        let snap = null;
+        try { snap = JSON.parse(snapEl.textContent); t.pass("snapshot parses as JSON", true); }
+        catch (e) { t.pass("snapshot parses as JSON", false, { error: String(e) }); }
+        t.pass("snapshot.mock === true", snap?.mock === true);
+        t.pass("snapshot.schema === 1", snap?.schema === 1);
+        t.pass("snapshot has roomObjects array",
+          Array.isArray(snap?.roomObjects));
+
+        const evEl = d.getElementById("status-events");
+        t.pass("events not empty placeholder",
+          evEl.textContent !== "(no events yet)" &&
+            evEl.textContent.length > 10);
+        let events = null;
+        try { events = JSON.parse(evEl.textContent); t.pass("events parses as JSON", true); }
+        catch (e) { t.pass("events parses as JSON", false, { error: String(e) }); }
+        t.pass("events is array", Array.isArray(events));
+        t.pass("events contains roomChanged (kind=1)",
+          events?.some((e) => e.kind === 1));
+        t.pass("events contains sentenceChanged (kind=4)",
+          events?.some((e) => e.kind === 4));
+      });
+
+      // ---------------------------------------------------------------
+      // Runner
+      // ---------------------------------------------------------------
+      (async () => {
+        const container = document.getElementById("suites");
+        const summary = document.getElementById("summary");
+        let totalPass = 0;
+        let totalFail = 0;
+
+        for (const s of suites) {
+          const rec = makeRecorder();
+          try {
+            await s.run(rec);
+          } catch (e) {
+            rec.pass(`suite threw: ${e.message}`, false, { stack: e.stack });
+          }
+          renderSuite(container, s.name, rec.results);
+          totalPass += rec.results.filter((r) => r.pass).length;
+          totalFail += rec.results.filter((r) => !r.pass).length;
+
+          summary.classList.remove("smoke__summary--running");
+          if (totalFail > 0) {
+            summary.classList.add("smoke__summary--fail");
+            summary.textContent = `FAIL  —  ${totalPass} passed, ${totalFail} failed`;
+          } else {
+            summary.textContent = `PASS  —  ${totalPass} passed`;
+          }
+        }
+      })();
+    </script>
+  </body>
+</html>
