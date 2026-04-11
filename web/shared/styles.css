@@ -208,6 +208,10 @@ pre {
   background: rgba(0, 0, 0, 0.85);
 }
 
+.game__missing[hidden] {
+  display: none;
+}
+
 .game__missing h2 {
   margin: 0 0 8px;
 }
