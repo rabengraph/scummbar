@@ -46,10 +46,11 @@ Always check `__scummActionsReady()` before sending commands.
 |---|---|
 | `__scummDoSentence({verb, objectA, objectB})` | **Preferred.** Execute a complete verb+object action atomically. Queues directly into the engine's sentence stack — no timing races. |
 | `__scummSkipMessage()` | Dismiss the current message/dialog text. Use to advance through conversations. `clickAt` does NOT dismiss messages. |
+| `__scummSelectDialog(index)` | Pick a dialog choice by 0-based index into `dialogChoices[]`. Dispatches the verb script directly by ID (no coordinate conversion). Returns false if no dialog is active or index is out of range. |
 | `__scummWalkTo(x, y)` | Walk ego to room coordinates. |
-| `__scummClickVerb(verbId)` | Select a verb. Use for dialog choices (verbs with `kind: 2`). |
 | `__scummClickObject(objectId)` | Click an object by ID (engine resolves position). |
 | `__scummClickAt(x, y)` | Click at room coordinates. Last resort — prefer `doSentence` or `clickObject`. |
+| `__scummClickVerb(verbId)` | **DEPRECATED.** Can corrupt the verb UI. Use `selectDialog`, `doSentence`, or `clickAt` instead. |
 
 ### How to perform common actions
 
@@ -76,9 +77,25 @@ if (s.haveMsg === 255) {
 
 **Select a dialog choice:**
 ```js
-// Dialog choices appear as verbs with kind: 2.
-// Read them from the state or from a dialogChoicesChanged event.
-__scummClickVerb(verbId)  // where verbId is from verbs[].id with kind=2
+// Dialog choices appear in __scummState.dialogChoices when a conversation
+// is active. The bridge detects them automatically by tracking which
+// verbs are new (not part of the room's baseline verb set).
+__scummSelectDialog(0)  // pick first dialog choice (0-indexed)
+// selectDialog dispatches the verb script directly by ID — no coordinate
+// conversion needed. Do NOT use clickVerb directly — selectDialog is the
+// safe wrapper that reads dialogChoices and handles validation.
+```
+
+**Navigate through a door / room exit:**
+```js
+// Use doSentence with Walk To on the door — the engine auto-walks
+// ego to the door and usually triggers the room transition.
+const door = s.roomObjects.find(o => o.name === 'door');
+__scummDoSentence({ verb: walkVerbId, objectA: door.id });
+// Wait for a roomEntered event to confirm the transition.
+// If the transition doesn't fire, follow up with walkTo into
+// the door's bounding box as a fallback:
+// __scummWalkTo(door.box.x + door.box.w/2, door.box.y + door.box.h/2);
 ```
 
 **Walk to a position:**
@@ -110,26 +127,29 @@ for (const ev of events) {
 
 ### Event kinds
 
-**Engine events** (from the C++ fork, share seq with snapshots):
+All event kinds are strings. Engine events and bridge events share the
+same `seq` space and the same format.
 
-| `kind` | Name | Payload |
-|:---:|---|---|
-| 1 | `roomChanged` | `{ from, to, resource }` |
-| 2 | `hoverChanged` | `{ objectId, objectName, verbId }` |
-| 3 | `inventoryChanged` | `{ count }` |
-| 4 | `sentenceChanged` | `{ verb, objectA, objectB, active }` |
-| 5 | `egoMoved` | `{ room, x, y, walking }` — only on room change or walk-stop |
+**Engine events** (from the C++ fork):
+
+| `kind` | Payload |
+|---|---|
+| `"roomChanged"` | `{ from, to, resource }` |
+| `"hoverChanged"` | `{ objectId, objectName, verbId }` |
+| `"inventoryChanged"` | `{ count }` |
+| `"sentenceChanged"` | `{ verb, objectA, objectB, active }` |
+| `"egoMoved"` | `{ room, x, y, walking }` — only on room change or walk-stop |
 
 **Bridge events** (derived in JS, have `source: "bridge"`):
 
-| `kind` | Name | Payload |
-|---|---|---|
-| `messageStateChanged` | Text display started/ended | `{ from, to, label, text?, talkingActor? }` — label is "started", "ending", or "cleared". `text` is the message string (when available). |
-| `dialogChoicesChanged` | Dialog options appeared/changed | `{ choices: [{verbId, name, slot, box}], count }` |
-| `roomEntered` | Player entered a new room | `{ from, to, objects: [{id, name}] }` |
-| `inputLockChanged` | Input enabled/disabled | `{ locked }` |
-| `cutsceneChanged` | Cutscene started/ended | `{ inCutscene }` |
-| `egoArrived` | Ego stopped walking | `{ x, y, room }` |
+| `kind` | Payload |
+|---|---|
+| `"messageStateChanged"` | `{ from, to, label, text?, talkingActor? }` — label is `"started"`, `"ending"`, or `"cleared"`. `text` is the message string (when available). |
+| `"dialogChoicesChanged"` | `{ choices: [{verbId, name, slot, box}], count }` |
+| `"roomEntered"` | `{ from, to, objects: [{id, name}] }` |
+| `"inputLockChanged"` | `{ locked }` |
+| `"cutsceneChanged"` | `{ inCutscene }` |
+| `"egoArrived"` | `{ x, y, room }` |
 
 ### Other read helpers
 
@@ -198,6 +218,7 @@ The canonical definition lives in the fork's
 
   "room": 10, "roomResource": 10,
   "roomWidth": 320, "roomHeight": 200,   // virtual-screen coords
+  "camera": { "x": 160 },               // viewport center; for scrolling rooms x > 160
 
   "ego": {
     "id": 1, "room": 10,
@@ -228,10 +249,22 @@ The canonical definition lives in the fork's
       "state": 0, "owner": 1, "inInventory": true, "untouchable": false }
   ],
 
+  "actors": [
+    { "id": 3, "name": "Captain Smirk",
+      "room": 10, "pos": { "x": 120, "y": 90 },
+      "facing": 90, "walking": false, "costume": 12 }
+  ],
+
   "verbs": [
     { "slot": 1, "id": 100, "name": "Open",
       "box": { "x": 0, "y": 144, "w": 40, "h": 8 },
-      "visible": true }
+      "visible": true, "kind": 0 }
+  ],
+
+  "dialogChoices": [
+    { "slot": 5, "id": 201, "name": "Tell me about the governor.",
+      "box": { "x": 0, "y": 80, "w": 200, "h": 8 },
+      "visible": true, "kind": 2 }
   ]
 }
 ```
@@ -243,6 +276,10 @@ The canonical definition lives in the fork's
 - **Coordinates are in virtual-screen pixels** (`roomWidth × roomHeight`),
   not canvas pixels. The overlay does the scaling for you; if you
   need to reason about positions, stay in virtual space.
+- `camera.x` is the viewport center. In non-scrolling rooms it's 160
+  (half of 320). In scrolling rooms (roomWidth > 320) it shifts as the
+  camera pans. Verb bounding boxes are in screen space; `selectDialog`
+  handles the conversion automatically.
 - `hover.objectId == 0` means the mouse is not over an object.
 - `sentence.active == false` means no sentence is queued; the
   `verb/objectA/objectB` fields may still be populated from the
@@ -253,8 +290,12 @@ The canonical definition lives in the fork's
   same synthesis yourself.
 - `untouchable == true` means not clickable. The overlay styles these
   differently from clickable ones.
-- `dialogChoices` is **not** in v1. It will be added as a top-level
-  field in a future schema; treat unknown top-level keys as additive.
+- `actors` lists NPCs in the current room (excluding ego). Each has
+  id, name, pos, facing, walking, costume. Actors with no costume
+  (inactive/invisible) are filtered out.
+- `dialogChoices` is a convenience subset of `verbs` — only visible
+  verbs with `kind == 2` (dialog options during conversations). Use
+  `__scummSelectDialog(index)` to pick one by 0-based index.
 - `schema == 1` today. If `schema > 1`, the bridge logs a warning and
   you may be running against a newer fork than the harness understands.
 
