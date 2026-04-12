@@ -79,6 +79,12 @@
             <code>__scummClickVerb(verbId)</code> — click a verb or dialog choice by ID.
           </li>
           <li>
+            <code>__scummClickObject(objectId)</code> — click an object by ID (preferred).
+          </li>
+          <li>
+            <code>__scummDoSentence({verb, objectA, objectB})</code> — execute verb + objects.
+          </li>
+          <li>
             <code>__scummClickAt(x, y)</code> — click at room coordinates.
           </li>
           <li>
@@ -89,9 +95,9 @@
           </li>
         </ul>
         <p>
-          Coordinates are in room/virtual-screen space (same as snapshot).
-          To click an object, use its <code>box</code> center from <code>roomObjects[]</code>.
+          Use <code>clickObject</code> to interact with objects (bypasses coordinate math).
           Dialog choices appear in <code>verbs[]</code> when <code>haveMsg != 0</code>.
+          Check <code>inputLocked</code> and <code>inCutscene</code> before sending commands.
         </p>
       </section>
 
@@ -153,14 +159,17 @@
   },
   "actionApi": {
     "clickVerb": "__scummClickVerb(verbId)",
+    "clickObject": "__scummClickObject(objectId)",
     "clickAt": "__scummClickAt(x, y)",
     "walkTo": "__scummWalkTo(x, y)",
+    "doSentence": "__scummDoSentence({ verb, objectA, objectB })",
     "ready": "__scummActionsReady()",
     "notes": [
-      "All coordinates are in room/virtual-screen space (same as snapshot).",
+      "clickObject is the preferred way to interact with objects (bypasses coordinate conversion).",
       "clickVerb works for both action verbs and dialog choices.",
+      "doSentence combines verb + objects with proper timing.",
       "Dialog choices appear in verbs[] when haveMsg != 0.",
-      "To click an object, use center of its box from roomObjects[].",
+      "camera.x is the viewport center (not left edge); to convert room->screen: screen_x = room_x - camera.x + 160.",
       "Check __scummActionsReady() before calling action functions."
     ]
   },
@@ -172,21 +181,27 @@
       "room", "roomWidth", "roomHeight",
       "camera.x",
       "haveMsg",
+      "inputLocked", "inCutscene",
       "ego.pos.{x,y}", "ego.walking",
       "sentence.{verb,objectA,objectB,active}",
       "hover.{objectId,objectName,verbId}",
       "roomObjects[].{id,name,box,state,untouchable}",
       "inventory[].{id,name}",
-      "verbs[].{slot,id,name,visible}"
+      "verbs[].{slot,id,name,visible,kind}",
+      "walkBoxes[].{id,ul,ur,ll,lr,locked,invisible}"
     ],
     "notes": [
       "roomObjects holds current-room objects only; picked-up items move to inventory.",
       "untouchable == true means not clickable. Treat !untouchable as clickable.",
       "There is no pre-formatted sentenceLine; synthesize it from sentence + verbs + object names.",
       "hover.objectId == 0 means no hover target.",
-      "camera.x is the scroll offset; screen_x = room_x - camera.x.",
+      "camera.x is the viewport center; to convert room->screen: screen_x = room_x - camera.x + 160.",
       "haveMsg: 0=no text, 255=text active (waiting for click), 1=text ending.",
       "verbs[] includes dialog choices when haveMsg != 0.",
+      "verbs[].kind: 0=action, 1=inventory, 2=dialog, 3=hidden.",
+      "inputLocked: true when player input is disabled (_userPut == 0).",
+      "inCutscene: true when a cutscene is playing.",
+      "walkBoxes[]: quadrilateral walkable areas with ul/ur/ll/lr corners.",
       "Schema is additive; the bridge warns loudly if snapshot.schema > 1."
     ]
   },

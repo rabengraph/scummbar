@@ -5,6 +5,11 @@
 # This script is opinionated about paths but not about emsdk setup. You
 # must have `emcc` on PATH (or source emsdk_env.sh) before running.
 #
+# Flags:
+#   --local                Skip git fetch/checkout/pull — build from the
+#                          current working tree as-is. Useful when you have
+#                          local edits in vendor/scummvm-agent/.
+#
 # Env vars:
 #   SCUMMVM_AGENT_REMOTE   git remote to clone
 #                          (default: https://github.com/rabengraph/scummvm.git)
@@ -15,6 +20,13 @@
 # See the fork's engines/scumm/AGENT_HARNESS.md for the full contract.
 
 set -euo pipefail
+
+LOCAL=false
+for arg in "$@"; do
+  case "$arg" in
+    --local) LOCAL=true ;;
+  esac
+done
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 VENDOR_DIR="$ROOT/vendor"
@@ -41,19 +53,28 @@ fi
 
 mkdir -p "$VENDOR_DIR" "$OUTPUT_DIR"
 
-if [ ! -d "$SCUMMVM_DIR/.git" ]; then
-  log "cloning $REMOTE into $SCUMMVM_DIR"
-  git clone "$REMOTE" "$SCUMMVM_DIR"
+if [ "$LOCAL" = true ]; then
+  if [ ! -d "$SCUMMVM_DIR" ]; then
+    err "--local specified but $SCUMMVM_DIR does not exist. Run without --local first."
+    exit 1
+  fi
+  log "building from local working tree (skipping git fetch/pull)"
+  cd "$SCUMMVM_DIR"
+else
+  if [ ! -d "$SCUMMVM_DIR/.git" ]; then
+    log "cloning $REMOTE into $SCUMMVM_DIR"
+    git clone "$REMOTE" "$SCUMMVM_DIR"
+  fi
+
+  cd "$SCUMMVM_DIR"
+
+  log "fetching origin…"
+  git fetch origin
+
+  log "checking out $BRANCH"
+  git checkout "$BRANCH"
+  git pull --ff-only || warn "could not fast-forward; continuing with local state"
 fi
-
-cd "$SCUMMVM_DIR"
-
-log "fetching origin…"
-git fetch origin
-
-log "checking out $BRANCH"
-git checkout "$BRANCH"
-git pull --ff-only || warn "could not fast-forward; continuing with local state"
 
 # The fork is responsible for knowing how to build its own web target.
 # We prefer a repo-local helper if one exists. Otherwise we fall back

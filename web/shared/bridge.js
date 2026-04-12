@@ -186,6 +186,23 @@ window.__scummWalkTo = function walkTo(x, y) {
 };
 
 /**
+ * Click on an object by its ID. This is the preferred method for agents
+ * since it bypasses coordinate space conversions entirely - the engine
+ * looks up the object position and handles the click internally.
+ * @param {number} objectId - The object ID from roomObjects[].id in the snapshot
+ * @returns {boolean} - true if the command was sent
+ */
+window.__scummClickObject = function clickObject(objectId) {
+  if (typeof Module === "undefined" || !Module._agent_click_object) {
+    console.warn("[SCUMM_BRIDGE] Module not ready for clickObject");
+    return false;
+  }
+  Module._agent_click_object(objectId);
+  console.debug("[SCUMM_CMD] clickObject", objectId);
+  return true;
+};
+
+/**
  * Execute a complete sentence: verb + object(s).
  * This is a convenience wrapper that clicks the verb, then the object(s).
  *
@@ -199,7 +216,7 @@ window.__scummWalkTo = function walkTo(x, y) {
  * Use the snapshot's ego.walking and sentence fields to track progress.
  */
 window.__scummDoSentence = function doSentence({ verb, objectA, objectB }) {
-  if (typeof Module === "undefined" || !Module._agent_click_verb) {
+  if (!window.__scummActionsReady()) {
     console.warn("[SCUMM_BRIDGE] Module not ready for doSentence");
     return false;
   }
@@ -207,16 +224,17 @@ window.__scummDoSentence = function doSentence({ verb, objectA, objectB }) {
   // Click the verb first
   Module._agent_click_verb(verb);
 
-  // If we have objects, we need to click on them
-  // For now, the agent should handle object clicking separately
-  // since we need object coordinates, not just IDs
-  console.debug("[SCUMM_CMD] doSentence verb:", verb, "objectA:", objectA, "objectB:", objectB);
+  // Click first object if provided (with slight delay to let verb register)
+  if (objectA && Module._agent_click_object) {
+    setTimeout(() => Module._agent_click_object(objectA), 50);
+  }
 
-  // TODO: To fully implement this, we'd need either:
-  // 1. Object ID -> coordinates lookup (from snapshot roomObjects)
-  // 2. A new agent_click_object(objectId) C++ function
-  // For now, clicking the verb is the first step; agent handles objects.
+  // Click second object if provided (for USE x WITH y)
+  if (objectB && Module._agent_click_object) {
+    setTimeout(() => Module._agent_click_object(objectB), 100);
+  }
 
+  console.debug("[SCUMM_CMD] doSentence", { verb, objectA, objectB });
   return true;
 };
 
@@ -229,7 +247,8 @@ window.__scummActionsReady = function actionsReady() {
     typeof Module !== "undefined" &&
     typeof Module._agent_click_verb === "function" &&
     typeof Module._agent_click_at === "function" &&
-    typeof Module._agent_walk_to === "function"
+    typeof Module._agent_walk_to === "function" &&
+    typeof Module._agent_click_object === "function"
   );
 };
 
