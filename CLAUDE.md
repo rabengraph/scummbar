@@ -7,7 +7,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Agent-first browser harness for running ScummVM games with symbolic state exposed to AI agents. This is a proof-of-concept answering: **Does exposing symbolic SCUMM state in-browser materially improve an agent's ability to play the game compared to pure vision?**
 
 Two-repo architecture developed in parallel:
-- **This repo (`agent-game-harness`)** — app shell, homepage, game route, overlays, state panel, scripts, deployment
+- **This repo (`scummbar`)** — app shell, homepage, game route, overlays, state panel, scripts, deployment
 - **ScummVM fork** — SCUMM engine telemetry hooks, C++ to JavaScript bridge
 
 ## ScummVM Fork (vendor/scummvm-agent/)

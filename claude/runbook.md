@@ -1,4 +1,4 @@
-# Claude runbook — agent-game-harness
+# Claude runbook — scummbar
 
 You are an AI agent operating the ScummVM browser harness.
 

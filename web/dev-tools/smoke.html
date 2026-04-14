@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Agent Game Harness — smoke tests</title>
+    <title>ScummBar — smoke tests</title>
     <link rel="stylesheet" href="/shared/styles.css" />
     <style>
       /*
@@ -105,7 +105,7 @@
     </style>
   </head>
   <body class="page page-smoke">
-    <h1 class="smoke__title">agent-game-harness — smoke tests</h1>
+    <h1 class="smoke__title">scummbar — smoke tests</h1>
     <p class="smoke__sub">
       Contract checks for routes, the agent brief, <code>/game?mock=1</code>
       telemetry, the <code>__scummMock</code> API, and <code>/status</code>.
@@ -475,7 +475,7 @@
 
         const buildEl = d.getElementById("status-build");
         t.pass("status-build mentions harness name",
-          /agent-game-harness/.test(buildEl.textContent));
+          /scummbar/.test(buildEl.textContent));
         t.pass("status-build mentions version 0.1.0",
           /0\.1\.0/.test(buildEl.textContent));
 

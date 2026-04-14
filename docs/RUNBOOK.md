@@ -1,7 +1,7 @@
 # Runbook — local setup from zero
 
 This runbook takes a fresh machine and walks it through everything
-needed to get the agent-game-harness running a real SCUMM game in a
+needed to get the scummbar running a real SCUMM game in a
 browser tab, with the v1 telemetry bridge streaming live state into
 the harness UI. It's the path we actually followed, written up after
 the fact — every step below has been exercised end-to-end.
@@ -28,7 +28,7 @@ either order, but the harness expects the fork to be vendored inside
 it at `vendor/scummvm-agent/`.
 
 ```
-agent-game-harness/            <- this repo, the browser harness
+scummbar/            <- this repo, the browser harness
 ├── scripts/
 │   ├── build-scummvm.sh       <- clones + builds the fork, copies artifacts
 │   └── add-game.sh            <- drops a game into web/data/games/<id>/
@@ -72,7 +72,7 @@ the version listed in `.nvmrc`).
 # Install nvm if you don't have it
 curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
 # Reopen the shell, then:
-cd agent-game-harness
+cd scummbar
 nvm install        # reads .nvmrc
 corepack enable    # makes pnpm available without a separate install
 ```
@@ -127,8 +127,8 @@ export SCUMMVM_AGENT_REMOTE=git@github.com:rabengraph/scummvm.git
 ## Step 1 — clone the harness and install JS deps
 
 ```bash
-git clone git@github.com:rabengraph/agent-game-harness.git
-cd agent-game-harness
+git clone git@github.com:rabengraph/scummbar.git
+cd scummbar
 nvm use
 corepack enable
 pnpm install

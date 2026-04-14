@@ -22,7 +22,7 @@ upstream. The harness's `scripts/build-scummvm.sh` points at
 `develop` by default via `SCUMMVM_AGENT_REMOTE` /
 `SCUMMVM_AGENT_BRANCH`.
 
-### Repo 2 — `agent-game-harness` (this repo)
+### Repo 2 — `scummbar` (this repo)
 Owns everything the agent sees and everything needed to run the site:
 
 - Homepage `/` with the agent brief (HTML and JSON)
