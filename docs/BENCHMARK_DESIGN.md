@@ -1,6 +1,7 @@
 # Benchmark Design — Game-Agnostic Progress Scoring
 
-Status: **draft / proposal**. Not yet implemented.
+Status: **draft / proposal**. Novelty vocabulary verified against the fork
+(see *Fork verification findings* below). Not yet implemented.
 
 ## Goal
 
@@ -67,23 +68,41 @@ the two ends of the spectrum honest:
 
 Stopping early is only neutral if the agent had genuinely plateaued.
 
+### Timebase
+
+Two sources are available from the fork:
+
+- `t` — wall-clock milliseconds (`g_system->getMillis()`). **Advances while
+  the engine is paused** at a menu or during a modal, which skews rate if
+  the agent stops to think at a menu prompt.
+- `seq` — monotonic counter incremented per snapshot/event. Pause-safe
+  for ordering, but it is not a time unit.
+
+**v1** uses wall-clock `t` as the rate denominator and accepts the
+menu-pause skew as a known minor bias, documented per run. `seq` is the
+authoritative ordering key.
+
+**v1.5** (once the bench API lands, see below) replaces `t` with the
+proposed engine `tickCount` — a pause-safe monotonic tick count, which is
+the correct denominator for rate metrics.
+
 ## Novelty primitives
 
 Each primitive is a monotonic set that only grows within a run. Adding an
-element counts as one novelty event. All are derivable from the v1 telemetry
-contract (`web/shared/bridge.js`, `web/shared/mock.js`, and the fork's
-`engines/scumm/AGENT_HARNESS.md`).
+element counts as one novelty event. Primitives 1–8 are derivable from the
+v1 telemetry contract today; primitive 9 is gated on the v1.5 bench API.
 
 | # | Primitive | Derived from | Notes |
 |---|---|---|---|
-| 1 | `Set<roomId>` rooms visited | `snapshot.room` | Strongest universal signal — adventure games gate progress on room access |
-| 2 | `Set<(roomId, objectId)>` objects seen | `roomObjects[]` | Catches objects that appear mid-room via script triggers |
-| 3 | `Set<(objectId, state)>` object-state transitions | `roomObjects[].state` | Door opened, box opened, lever pulled. Reopening a door is not re-rewarded |
-| 4 | `Set<objectId>` inventory first-acquisitions | `inventory[]` | Drop/repick does not re-score |
-| 5 | `Set<actorId>` actors encountered | `actors[]` | NPC discovery |
-| 6 | `Set<msgTextHash>` unique lines heard | `messageStateChanged.text` | New dialog lines = new script paths reached. Covers the "information gathering" axis |
-| 7 | `Set<(actorId, dialogChoiceId)>` dialog branches | `dialogChoicesChanged` | Reaching a new dialog node |
-| 8 | Cutscene count | `inCutsceneChanged false→true` | Major plot beats — SCUMM fires cutscenes on milestones |
+| 1 | `Set<roomId>` rooms visited | `snapshot.room` | Strongest universal signal. `agent_state.cpp:627`. |
+| 2 | `Set<(roomId, objectId)>` objects seen | `roomObjects[]` | Catches mid-room script spawns via engine rewrites of `_objs[]`. `agent_state.cpp:386`. |
+| 3 | `Set<(objectId, state)>` object-state transitions | `roomObjects[].state` | Door opened, box opened, lever pulled. Kept in sync via `putState` (`object.cpp:327`). Script-internal flag-only puzzles do not surface here — see primitive 9. |
+| 4 | `Set<objectId>` inventory first-acquisitions | `inventory[]` | Drop/repick does not re-score. `agent_state.cpp:423`. |
+| 5 | `Set<actorId>` actors encountered | `actors[]` | NPC discovery. **Caveat:** actors with `_costume == 0` are filtered out (`agent_state.cpp:566`); some games briefly null costume during scene swaps. |
+| 6 | `Set<msgTextHash>` unique lines heard | `messageStateChanged.text` | Covers all charset-routed text: actor speech, narrator, notes, "Look at" inscriptions. `agent_state.cpp:639`. |
+| 7 | `Set<(actorId, dialogChoiceId)>` dialog branches | `dialogChoicesChanged` | Reliable on v5/v6. Untested on v3/v4 — tag runs accordingly. |
+| 8 | Cutscene count | bridge-derived `cutsceneChanged` event | No engine-side event fires on cutscene begin/end; the bridge already diffs `inCutscene` (`bridge.js:296`). For v1 we count bridge-derived transitions. |
+| 9 | `Set<(objectId, newOwnerId)>` ownership transfers | `ownerChanged` (bench API) | **v1.5-conditional.** Catches give-to-NPC transfers our `inventory[]` diff misses. Core to every SCUMM game. Gated on the bench API being enabled. |
 
 For v1 all primitives are weighted equally (weight = 1). The scoring function
 should be structured so that per-primitive weights can be tuned later, but we
@@ -127,7 +146,7 @@ thrashing, action repetition) and are cheap to compute from the event log:
 
 | Signal | Formula | What it measures |
 |---|---|---|
-| Action efficiency | `N(end) / total_sentences` | Rubik's-cube ratio. Fewer wasted actions = higher |
+| Action efficiency | `N(end) / total_sentences` | Rubik's-cube ratio. **v1**: inferred from snapshot deltas. **v1.5**: measured directly via `sentenceResolved(anyEffect)`. |
 | Sentence uniqueness | `unique (verb, objectA, objectB) / total_sentences` | Direct measure of repetition |
 | Room revisit ratio | `roomEntered_events / unique_rooms` | Back-and-forth. Only penalized when it happens during a zero-novelty streak |
 | Plateau | longest stretch where `dN = 0` | Stuck duration |
@@ -148,11 +167,12 @@ title contributed what.
 
 Each run record carries enough metadata for cross-run comparability:
 
-- `gameId`, `gameVersion`, `schema`
+- `gameId`, `gameVersion`, `schema`, `benchSchema` (when the bench API is enabled)
 - `declaredBudget` (one of 5, 10, 30, 60 minutes)
 - starting `room`, seed if available
 - `stopReason` (explicit / ceiling / crash)
 - agent id / version
+- `timebase` (`"wallclock"` for v1, `"tickCount"` for v1.5)
 - mock runs (`snapshot.mock === true`) are excluded from the benchmark pool
 
 ## Known farming mitigations
@@ -166,100 +186,70 @@ The novelty primitives are designed to resist trivial gaming:
 - **Early-quit**: rate computed against declared budget, not elapsed
 - **Overtime**: hard ceiling enforces the budget
 
-## Open questions for the fork
+## Fork verification findings
 
-Before locking the vocabulary we need the fork-side author to confirm that
-each primitive is reliably populated by the C++ engine across SCUMM v3–v6.
-See the prompt below.
+The fork-side agent verified the eight original primitives against the C++
+engine, confirmed reliable population across SCUMM v3–v6, and proposed a
+dedicated `__scummBench*` API surface. Key outcomes:
 
-### Prompt for the fork-side agent
+### Confirmed for v1 (no engine work required)
 
-> **Context:** We are designing a game-agnostic benchmark for AI agents
-> playing SCUMM games via the telemetry contract in this fork. The benchmark
-> scores "progress" purely from monotonic novelty over the published state —
-> no per-game milestones. The score is rate-based against a declared run
-> budget (5/10/30/60 min) and includes diagnostic metrics for action
-> efficiency and repetition. We need to verify the set of novelty primitives
-> below is (a) reliably populated by the engine for all supported SCUMM
-> titles (v3–v6), and (b) stable across games.
->
-> **Files to read:**
-> - `engines/scumm/AGENT_HARNESS.md` (canonical schema and event list)
-> - `engines/scumm/agent_state.{h,cpp}` (state collection)
-> - `engines/scumm/agent_bridge_emscripten.cpp` (JS publish path)
-> - Any variant engine paths (scumm_v3/v4/v5/v6) that gate which fields get populated
->
-> **Proposed novelty primitives:** [see table above]
->
-> **Questions to answer:**
->
-> 1. For each primitive, which engine version(s) reliably publish the field?
->    Flag any that are v5+-only or conditional.
-> 2. `roomObjects[].state` — what is the actual range/semantics per SCUMM
->    version? Is a state delta always observable when a puzzle object is
->    manipulated, or are some interactions script-internal and not reflected
->    in `state`?
-> 3. `actors[]` — does every NPC in a room appear, or only actors with
->    costume/visibility flags set? Any filtering we should know about?
-> 4. `messageStateChanged` — is `msgText` populated for *all* text, or only
->    actor speech (not system messages, notes, inscriptions read via Look at)?
-> 5. Are there universal engine events we should add to the primitives list?
->    (e.g. script start/stop, inventory giving, save-point flags,
->    variable-write hooks.) List any that are game-agnostic.
-> 6. For the Rubik's-cube efficiency metric we want to detect when a
->    submitted sentence produced *no effect* (failed or wasted action).
->    Three options, cheapest first — pick whichever is cheapest to expose:
->    (a) is there a default-reject script we can detect firing?
->    (b) can we tell if any variable / object-state / script-state changed
->        between sentence-submit and next-idle?
->    (c) is there a canonical "sentence completed" event, and does it carry
->        an outcome/result code?
-> 7. The snapshot carries a `t` field. Please confirm its semantics: is it
->    wall-clock ms, engine-tick count, or something else? Rate-based
->    scoring needs a stable, monotonic timebase that does not skew if the
->    browser tab is backgrounded. If `t` is wall-clock, is there an
->    engine-tick field we can use alongside?
-> 8. Any fields that look universal but are actually game-specific (MI1 vs
->    DOTT vs Indy3)? We want to drop or guard those.
-> 9. **Open design question — a dedicated benchmark-tracker API.** The
->    existing `window.__scumm*` API is built for agents *playing* the game.
->    The benchmark tracker has different needs and does not need to share
->    the same surface. If we added a separate API (e.g.
->    `window.__scummBench*`) purely to feed the scoring system, what would
->    you expose? We are asking you to design it, not just list signals we
->    missed.
->
->    Directions to consider, but not limited to:
->    - Script execution traces (script id, entry/exit, caller)
->    - Global variable writes (which vars, old/new, which script set them)
->    - Room graph / exit topology as a static dump per game boot
->    - Save-point or game-flag writes the engine already treats as checkpoints
->    - Walkbox visits / pathfinding targets actually reached
->    - Object-property deltas below the `state` field (owner, class, name, position)
->    - Timer and cutscene script fires with source script id
->    - A canonical "sentence result" hook with an outcome code (ran / rejected / no-op)
->    - A monotonic engine-tick counter separate from wall-clock `t`
->
->    For each thing you propose: give a rough **cost estimate**
->    (cheap / medium / expensive) and whether it is **game-agnostic**
->    (universally present across SCUMM v3–v6) or **conditional**. The goal
->    is to identify a small set of high-value, cheap, universal signals
->    that would materially improve scoring accuracy.
->
-> **Deliverable:** A short report (under 400 words) confirming or refining
-> each primitive, plus any additions from Q5/Q6/Q9. Reference the
-> `file:line` where each field is populated.
+- All eight primitives are reliably populated, with the per-primitive notes
+  already folded into the table above.
+- `t` is wall-clock and not pause-safe; `seq` is the safe monotonic counter.
+  Documented in the Timebase section.
+- Primitive 8 (cutscene) works for v1 via the existing bridge-derived
+  `cutsceneChanged` event — no engine-side event is required.
 
-## Next steps (not yet committed)
+### Proposed `__scummBench*` API (v1.5)
 
-1. Get the fork-side verification report and revise the vocabulary.
-2. Build a minimal recorder on top of the existing `__scummEventsSince`
-   stream that maintains the eight monotonic sets and writes a run log.
-3. Implement the run-start / run-stop handshake: `__benchmarkStart({ game, budgetMinutes, agentId })`,
+A separate publisher fed from existing engine funnels, behind the
+`--enable-agent-telemetry` flag and schema-versioned independently from the
+play-time snapshot schema. All hooks are **cheap** (single call in an
+existing funnel) and **universal** (v3–v6):
+
+| Hook | Source funnel | Benchmark use |
+|---|---|---|
+| `scriptEntered(scriptId, callerScriptId)` / `scriptExited(scriptId)` | `runScript` / `stopScript` (`script.cpp:38`, `script.cpp:262`) | Plateau diagnostics (is any script firing at all?) |
+| `varWritten(var, old, new, scriptId)` | `writeVar` (`script.cpp:713`) | **Logged, not scored** in v1.5 — too noisy without a puzzle-var allowlist. Revisit in v2. |
+| `objectStateChanged(obj, old, new)` | `putState` (`object.cpp:327`) | Upgrade path for primitive 3 |
+| `ownerChanged(obj, old, new)` | `setOwnerOf` (`object.cpp:98`) | **Primitive 9** — ownership transfers |
+| `sentenceResolved(verb, objA, objB, anyEffect)` | end of `checkAndRunSentenceScript` (`script.cpp:1166`) | **Directly measured Action Efficiency** — replaces v1 snapshot-diff inference |
+| `tickCount` | per `scummLoop` (`scumm.cpp:3250`) | Pause-safe rate denominator; replaces wall-clock `t` |
+
+### Deferred
+
+- **`varWritten`** scoring — games write vars for cursor position, music state,
+  and countless internal bookkeeping. Without a puzzle-relevant allowlist we
+  would re-introduce novelty farming. Log it for offline analysis in v1.5;
+  revisit in v2.
+- **Room graph / exit topology** dump — medium cost (exits are script-encoded
+  per room, not a flat table). Not worth the engine work for v1.
+
+## Next steps
+
+### v1 (no engine changes)
+
+1. Build a minimal recorder on top of the existing `__scummEventsSince`
+   stream that maintains primitives 1–8 and writes a run log.
+2. Implement the run-start / run-stop handshake:
+   `__benchmarkStart({ game, budgetMinutes, agentId })`,
    `__benchmarkStop(reason)`, plus a human End button in the overlay.
-4. Implement the hard-ceiling watchdog.
-5. Produce a scoring function that consumes the run log and emits the
+3. Implement the hard-ceiling watchdog.
+4. Produce a scoring function that consumes the run log and emits the
    primary score plus the diagnostic efficiency metrics.
-6. Build the per-game + suite-level (geomean) leaderboard view.
-7. Run a baseline agent + random-action agent on the same game to
+5. Build the per-game + suite-level (geomean) leaderboard view.
+6. Run a baseline agent + random-action agent on the same game to
    sanity-check that the score separates them.
+
+### v1.5 (adopts `__scummBench*`)
+
+7. Fork lands the `__scummBench*` hooks behind `--enable-agent-telemetry`
+   with an independent `benchSchema` version.
+8. Recorder adds primitive 9 (ownership transfers) when the bench API is
+   present.
+9. Action Efficiency switches from snapshot-diff inference to
+   `sentenceResolved(anyEffect)`.
+10. Rate denominator switches from wall-clock `t` to engine `tickCount`.
+11. `scriptEntered/Exited` and `varWritten` logged (not scored) for v2
+    analysis.
