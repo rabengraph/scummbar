@@ -1,11 +1,11 @@
 {
-  "_comment": "Pre-baked games downloaded at build time by scripts/fetch-prebaked-games.sh and served from /data/games/<id>/. Launch via /game?game=<id>. Archives are hosted as release assets on github.com/rabengraph/scumm-demo-games. sha256 is optional; when present the fetch script verifies the download and uses it as the cache key.",
+  "_comment": "Pre-baked games downloaded at build time by scripts/fetch-prebaked-games.sh and served from /data/games/<id>/. Launch via /game?game=<id>. Archives are committed to github.com/rabengraph/scumm-demo-games and fetched via raw.githubusercontent.com. sha256 is optional; when present the fetch script verifies the download and uses it as the cache key.",
   "games": [
     {
       "id": "monkey1",
       "title": "The Secret of Monkey Island (demo)",
-      "url": "https://github.com/rabengraph/scumm-demo-games/releases/download/v1/monkey1.zip",
-      "sha256": null
+      "url": "https://raw.githubusercontent.com/rabengraph/scumm-demo-games/main/monkey1-amiga-demo-en.zip",
+      "sha256": "b0b6f1c4b74dc0e084b5d342600b9aea7c065f26c2c3a5261f42ecd4a78742ad"
     }
   ]
 }
