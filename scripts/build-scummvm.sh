@@ -37,6 +37,12 @@ OUTPUT_DIR="$ROOT/web/public/scummvm"
 # absolute /data/* URLs at runtime. Our dev server roots at web/, so
 # the data tree has to live at web/data/.
 DATA_OUTPUT_DIR="$ROOT/web/data"
+# Build cache — a full ScummVM emscripten build takes ~7 min but the
+# fork mostly doesn't change between runs. We cache final artifacts
+# keyed on fork SHA + emcc version + this script's hash. The cache
+# dir is gitignored (.cache/ is Vercel-build-cache friendly).
+BUILD_CACHE_DIR="$ROOT/.cache/scummvm-build"
+BUILD_CACHE_KEEP="${BUILD_CACHE_KEEP:-2}"
 
 REMOTE="${SCUMMVM_AGENT_REMOTE:-https://github.com/rabengraph/scummvm.git}"
 BRANCH="${SCUMMVM_AGENT_BRANCH:-develop}"
@@ -75,6 +81,60 @@ else
   git checkout "$BRANCH"
   git pull --ff-only || warn "could not fast-forward; continuing with local state"
 fi
+
+# ── Cache key ────────────────────────────────────────────────────────
+# Compute a content-addressable key for the final build artifacts.
+# Inputs: fork HEAD SHA (+ dirty-tree hash if applicable), emcc version,
+# and the hash of this script (which controls how the build is invoked).
+SCUMMVM_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+DIRTY_SUFFIX=""
+if [ -n "$(git status --porcelain 2>/dev/null || true)" ]; then
+  # Hash the tree delta: tracked diff + untracked file contents. This
+  # keeps --local rebuilds cache-coherent when iterating on fork edits.
+  dirty_hash="$(
+    {
+      git diff HEAD 2>/dev/null || true
+      git ls-files --others --exclude-standard -z 2>/dev/null \
+        | xargs -0 cat 2>/dev/null || true
+    } | sha256sum | awk '{print $1}' | cut -c1-12
+  )"
+  DIRTY_SUFFIX="-dirty-${dirty_hash}"
+  log "working tree dirty; cache key includes tree hash ${dirty_hash}"
+fi
+EMCC_HASH="$(emcc --version | head -1 | sha256sum | awk '{print $1}' | cut -c1-12)"
+SCRIPT_HASH="$(sha256sum "$ROOT/scripts/build-scummvm.sh" | awk '{print $1}' | cut -c1-12)"
+CACHE_KEY="${SCUMMVM_SHA}${DIRTY_SUFFIX}-emcc-${EMCC_HASH}-script-${SCRIPT_HASH}"
+CACHE_ENTRY="$BUILD_CACHE_DIR/$CACHE_KEY"
+
+log "cache key: $CACHE_KEY"
+
+# ── Cache restore ────────────────────────────────────────────────────
+# If a prior build already produced artifacts for this exact key, copy
+# them into the harness and skip the 7-minute compile.
+if [ -f "$CACHE_ENTRY/.stamp" ] && [ -d "$CACHE_ENTRY/public" ]; then
+  log "cache hit — restoring artifacts from $CACHE_ENTRY"
+  mkdir -p "$OUTPUT_DIR"
+  cp -R "$CACHE_ENTRY/public/." "$OUTPUT_DIR/"
+  if [ -d "$CACHE_ENTRY/data" ]; then
+    mkdir -p "$DATA_OUTPUT_DIR/games"
+    # Restore the /data tree minus games/ (user-added game folders live
+    # there; leave them alone).
+    ( cd "$CACHE_ENTRY/data" && \
+      find . -mindepth 1 -maxdepth 1 ! -name games -print0 | \
+      xargs -0 -I{} cp -R {} "$DATA_OUTPUT_DIR/" )
+    if [ ! -f "$DATA_OUTPUT_DIR/games/index.json" ] && \
+       [ -f "$CACHE_ENTRY/data/games/index.json" ]; then
+      cp "$CACHE_ENTRY/data/games/index.json" \
+         "$DATA_OUTPUT_DIR/games/index.json"
+    fi
+  fi
+  # Bump mtime so recent-first pruning treats this as freshly used.
+  touch "$CACHE_ENTRY/.stamp"
+  log "restored from cache; skipped build."
+  exit 0
+fi
+
+log "cache miss — running full build"
 
 # The fork is responsible for knowing how to build its own web target.
 # We prefer a repo-local helper if one exists. Otherwise we fall back
@@ -155,6 +215,41 @@ if [ -d "$SCUMMVM_DIR/build-emscripten/data" ]; then
 else
   warn "no build-emscripten/data/ found; the engine will fail to fetch its GUI theme"
   warn "re-run ./scripts/build-scummvm.sh after a successful dist-emscripten build"
+fi
+
+# ── Cache populate ───────────────────────────────────────────────────
+# Snapshot the artifacts we just produced so the next run with the same
+# inputs can skip the build entirely.
+log "populating build cache at $CACHE_ENTRY"
+rm -rf "$CACHE_ENTRY"
+mkdir -p "$CACHE_ENTRY/public"
+cp -R "$OUTPUT_DIR/." "$CACHE_ENTRY/public/"
+if [ -d "$SCUMMVM_DIR/build-emscripten/data" ]; then
+  mkdir -p "$CACHE_ENTRY/data"
+  # Cache everything except games/ (user content, large, regenerated
+  # by fetch-prebaked-games.sh / add-game.sh).
+  ( cd "$SCUMMVM_DIR/build-emscripten/data" && \
+    find . -mindepth 1 -maxdepth 1 ! -name games -print0 | \
+    xargs -0 -I{} cp -R {} "$CACHE_ENTRY/data/" )
+  # Keep the fork's stock games/index.json (used as a fallback).
+  if [ -f "$SCUMMVM_DIR/build-emscripten/data/games/index.json" ]; then
+    mkdir -p "$CACHE_ENTRY/data/games"
+    cp "$SCUMMVM_DIR/build-emscripten/data/games/index.json" \
+       "$CACHE_ENTRY/data/games/index.json"
+  fi
+fi
+touch "$CACHE_ENTRY/.stamp"
+
+# Prune old cache entries; keep the N most recently touched. Small N
+# keeps Vercel's 1 GB build cache honest — each entry is ~100 MB.
+if [ -d "$BUILD_CACHE_DIR" ]; then
+  mapfile -t entries < <(ls -1t "$BUILD_CACHE_DIR" 2>/dev/null || true)
+  if [ "${#entries[@]}" -gt "$BUILD_CACHE_KEEP" ]; then
+    for old in "${entries[@]:$BUILD_CACHE_KEEP}"; do
+      log "pruning old cache entry: $old"
+      rm -rf "${BUILD_CACHE_DIR:?}/$old"
+    done
+  fi
 fi
 
 log "done."
