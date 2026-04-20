@@ -14,17 +14,21 @@
         <p class="brief__eyebrow">AGENT BRIEFING</p>
         <h1 class="brief__title">Scummbar Game Harness</h1>
         <p class="brief__subtitle">
-          Harness for ScummVM games. Open
-          <a href="/game"><code>/game</code></a> to upload a game folder
-          and start playing through the <code>window.__scumm*</code> API.
+          Harness for ScummVM games. Play the
+          <a href="/game?game=monkey1-demo"><code>Monkey Island 1 demo</code></a>
+          or <a href="/game">upload your own game</a>, then drive it
+          through the <code>window.__scumm*</code> API.
         </p>
       </header>
 
       <section class="brief__section">
         <h2>Quick start</h2>
         <ol>
-          <li>Navigate to <a href="/game"><code>/game</code></a> and
-            upload a ScummVM game folder when prompted.</li>
+          <li>Open a game — either the pre-baked
+            <a href="/game?game=monkey1-demo"><code>/game?game=monkey1-demo</code></a>
+            (Monkey Island 1 demo) or
+            <a href="/game"><code>/game</code></a> to upload your own
+            ScummVM game folder.</li>
           <li>Wait for <code>__scummActionsReady()</code> to return true</li>
           <li>Read state: <code>__scummRead()</code></li>
           <li>Act: <code>__scummDoSentence({verb, objectA})</code></li>
@@ -32,9 +36,9 @@
           <li>Repeat 3-5</li>
         </ol>
         <p class="panel__hint">
-          Local dev with a pre-staged game folder can skip the upload UI
-          via <code>/game?game=monkey1</code> (see
-          <code>scripts/add-game.sh</code>).
+          For local dev you can also pre-stage any other game folder via
+          <code>scripts/add-game.sh</code> and load it with
+          <code>/game?game=&lt;id&gt;</code>.
         </p>
       </section>
 
@@ -140,10 +144,10 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 7,
+  "version": 8,
   "name": "Scummbar Game Harness",
   "tagline": "Harness for ScummVM games.",
-  "mission": "Play the adventure game at /game using the window.__scumm* API. Upload a game folder on first visit.",
+  "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
   "routes": {
     "briefing": "/briefing",
     "game": "/game",
@@ -151,7 +155,11 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
   },
   "gameRoute": "/game",
   "mockRoute": "/game?mock=1",
-  "localPreStagedGame": "/game?game=<id>  (only for local dev with scripts/add-game.sh)",
+  "prebakedGames": [
+    { "id": "monkey1-demo", "title": "The Secret of Monkey Island (demo)", "url": "/game?game=monkey1-demo" }
+  ],
+  "uploadGame": "/game  (shows an upload UI when no ?game= param is set)",
+  "localPreStagedGame": "/game?game=<id>  (any id added locally via scripts/add-game.sh)",
   "api": {
     "read": {
       "__scummRead()": "Full state snapshot",

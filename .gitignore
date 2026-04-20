@@ -24,6 +24,9 @@ game-data/*
 vendor/scummvm-agent/build/
 vendor/scummvm-agent/
 
+# Pre-baked game fetch cache (scripts/fetch-prebaked-games.sh)
+.cache/
+
 # Scummvm artifacts copied into the web tree
 web/public/scummvm/*
 !web/public/scummvm/.gitkeep

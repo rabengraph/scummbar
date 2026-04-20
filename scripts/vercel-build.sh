@@ -35,4 +35,12 @@ cd "$ROOT"
 log "running build-scummvm.sh…"
 ./scripts/build-scummvm.sh
 
+# ── 3. Pre-baked games ───────────────────────────────────────────────
+# Download the games declared in scripts/prebaked-games.json into
+# web/data/games/<id>/ so /game?game=<id> works in the deployment.
+# Must run after build-scummvm.sh (needs the fork's index generator and
+# the /data tree). Cached by .cache/prebaked-games/ stamp files.
+log "running fetch-prebaked-games.sh…"
+./scripts/fetch-prebaked-games.sh
+
 log "vercel build complete."

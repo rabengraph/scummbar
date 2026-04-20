@@ -46,8 +46,10 @@ pnpm dev                    # or ./scripts/start-dev.sh
 - `/briefing` — Agent briefing page with `#agent-brief` JSON and API reference
 - `/game` — ScummVM wasm runtime. Default state shows the upload UI;
   state and events are exposed via `window.__scumm*`.
-  - `?game=<id>` — auto-launch a game pre-staged via `scripts/add-game.sh`
-    (local dev only; e.g. `/game?game=monkey1`)
+  - `?game=<id>` — auto-launch a pre-baked or locally staged game
+    - Pre-baked: `/game?game=monkey1-demo` (available in deployments,
+      declared in `scripts/prebaked-games.json`, fetched at build time)
+    - Local dev: `/game?game=<id>` (any game added via `scripts/add-game.sh`)
   - `?mock=1` — use fake telemetry (no fork build needed)
   - `?overlay=1` — start with debug overlay visible
 - `/status` — Debug view of snapshot and event history
