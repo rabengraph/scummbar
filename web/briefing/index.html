@@ -130,6 +130,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
         <ol>
           <li>Check <code>__scummActionsReady()</code> before first action.</li>
           <li>Check <code>inputLocked</code> before each action.</li>
+          <li>While <code>dialogChoices</code> is non-empty the conversation is open — only <code>__scummSelectDialog</code> and <code>__scummSkipMessage</code> are allowed. <code>doSentence</code>, <code>walkTo</code>, <code>clickAt</code>, and <code>clickObject</code> will be rejected until a choice is picked.</li>
           <li>Prefer <code>doSentence</code> over clickAt.</li>
           <li>Use events (not polling state) to detect action results.</li>
           <li>Avoid repeating failed actions.</li>
@@ -145,7 +146,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 8,
+  "version": 9,
   "name": "ScummBench",
   "tagline": "Harness for ScummVM games.",
   "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
@@ -205,6 +206,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
   "rules": [
     "Check __scummActionsReady() before first action",
     "Check inputLocked before each action",
+    "While dialogChoices is non-empty, only __scummSelectDialog and __scummSkipMessage are allowed — doSentence/walkTo/clickAt/clickObject are rejected until the conversation is closed",
     "Prefer doSentence over clickAt",
     "Use events to detect results, not state polling",
     "Avoid repeating failed actions"
