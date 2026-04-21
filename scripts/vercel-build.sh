@@ -20,6 +20,31 @@ EMSDK_VERSION="${EMSDK_VERSION:-latest}"
 log()  { printf "\033[1;36m[vercel-build]\033[0m %s\n" "$*"; }
 warn() { printf "\033[1;33m[vercel-build]\033[0m %s\n" "$*" >&2; }
 
+# ── Cache diagnostic helper ──────────────────────────────────────────
+# Print the state of each build cache directory. Emitted before and
+# after the build so Vercel logs make cache behaviour easy to verify.
+cache_status() {
+  local label="$1"
+  log "cache status ($label):"
+  for path in \
+      "$VERCEL_CACHE/emsdk" \
+      "$VERCEL_CACHE/scummvm-agent" \
+      "$VERCEL_CACHE/scummvm-build" \
+      "$ROOT/.cache/prebaked-games"; do
+    if [ -e "$path" ]; then
+      local size
+      size="$(du -sh "$path" 2>/dev/null | awk '{print $1}')"
+      local entries=""
+      if [ -d "$path" ]; then
+        entries=" ($(find "$path" -mindepth 1 -maxdepth 1 2>/dev/null | wc -l) entries)"
+      fi
+      log "  present: $path — $size$entries"
+    else
+      log "  missing: $path"
+    fi
+  done
+}
+
 # ── 0. Relocate caches under node_modules/.cache ─────────────────────
 mkdir -p "$VERCEL_CACHE" "$ROOT/vendor" "$ROOT/.cache"
 link_into_cache() {
@@ -33,6 +58,8 @@ link_into_cache() {
 }
 link_into_cache "$ROOT/vendor/scummvm-agent" "$VERCEL_CACHE/scummvm-agent"
 link_into_cache "$ROOT/.cache/scummvm-build" "$VERCEL_CACHE/scummvm-build"
+
+cache_status "before build"
 
 # ── 1. Install Emscripten SDK ────────────────────────────────────────
 if [ -f "$EMSDK_DIR/emsdk" ]; then
@@ -64,5 +91,7 @@ log "running build-scummvm.sh…"
 # the /data tree). Cached by .cache/prebaked-games/ stamp files.
 log "running fetch-prebaked-games.sh…"
 ./scripts/fetch-prebaked-games.sh
+
+cache_status "after build"
 
 log "vercel build complete."
