@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex, nofollow" />
-    <title>Scummbar Game Harness — smoke tests</title>
+    <title>ScummBench — smoke tests</title>
     <link rel="stylesheet" href="/shared/styles.css" />
     <style>
       /*
@@ -105,7 +105,7 @@
     </style>
   </head>
   <body class="page page-smoke">
-    <h1 class="smoke__title">Scummbar Game Harness — smoke tests</h1>
+    <h1 class="smoke__title">ScummBench — smoke tests</h1>
     <p class="smoke__sub">
       Contract checks for routes, the agent brief, <code>/game?mock=1</code>
       telemetry, the <code>__scummMock</code> API, and <code>/status</code>.
@@ -213,8 +213,8 @@
           return;
         }
         t.pass("version is 7", brief.version === 7, { got: brief.version });
-        t.pass("name is 'Scummbar Game Harness'",
-          brief.name === "Scummbar Game Harness", { got: brief.name });
+        t.pass("name is 'ScummBench'",
+          brief.name === "ScummBench", { got: brief.name });
         t.pass("gameRoute === /game", brief.gameRoute === "/game");
         t.pass("mockRoute === /game?mock=1", brief.mockRoute === "/game?mock=1");
         t.pass("routes.briefing === /briefing",
@@ -471,7 +471,7 @@
 
         const buildEl = d.getElementById("status-build");
         t.pass("status-build mentions harness name",
-          /Scummbar Game Harness/.test(buildEl.textContent));
+          /ScummBench/.test(buildEl.textContent));
         t.pass("status-build mentions version 0.1.0",
           /0\.1\.0/.test(buildEl.textContent));
 

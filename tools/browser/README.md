@@ -1,4 +1,4 @@
-# Browser Harness — Scummbar Game Harness
+# Browser Harness — ScummBench
 
 Lets an AI agent drive ScummVM from the terminal via `eval` on `window.__scumm*` globals.
 

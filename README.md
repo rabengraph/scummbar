@@ -1,4 +1,4 @@
-# Scummbar Game Harness
+# ScummBench
 
 Harness for ScummVM games. Agent-first browser harness for running ScummVM
 games with symbolic state exposed to AI agents (e.g. Claude).
@@ -21,7 +21,7 @@ The central question this POC tries to answer:
   tweaks. The fork's `master` stays as a pristine mirror of upstream
   ScummVM; all POC work lives on `develop`. Canonical schema doc:
   `engines/scumm/AGENT_HARNESS.md`.
-- **`scummbar`** (this repo) — briefing page, `/game` route,
+- **`scummbench`** (this repo) — briefing page, `/game` route,
   overlays, state panel, mock mode, startup scripts, hosting config,
   and the Claude runbook.
 
