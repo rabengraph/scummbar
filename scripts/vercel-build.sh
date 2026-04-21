@@ -83,6 +83,21 @@ source ./emsdk_env.sh
 log "emcc version: $(emcc --version | head -1)"
 
 # ── 2. Build ScummVM ─────────────────────────────────────────────────
+# Pre-clone the fork shallow. A full clone of rabengraph/scummvm
+# takes ~3 min because the tree carries years of ScummVM upstream
+# history we don't need to build. --depth 1 --branch develop drops
+# that to ~30 s. build-scummvm.sh's own clone step is skipped when
+# .git already exists; its git fetch/checkout/pull --ff-only steps
+# all work on a shallow repo.
+SCUMMVM_DIR="$ROOT/vendor/scummvm-agent"
+SCUMMVM_REMOTE="${SCUMMVM_AGENT_REMOTE:-https://github.com/rabengraph/scummvm.git}"
+SCUMMVM_BRANCH="${SCUMMVM_AGENT_BRANCH:-develop}"
+if [ ! -d "$SCUMMVM_DIR/.git" ]; then
+  log "shallow-cloning $SCUMMVM_REMOTE (branch: $SCUMMVM_BRANCH)…"
+  git clone --depth 1 --branch "$SCUMMVM_BRANCH" --single-branch \
+    "$SCUMMVM_REMOTE" "$SCUMMVM_DIR"
+fi
+
 cd "$ROOT"
 log "running build-scummvm.sh…"
 ./scripts/build-scummvm.sh
