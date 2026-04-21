@@ -372,6 +372,27 @@ describe("recorder lifecycle", () => {
     assert.equal(next.nextIndex, 2);
   });
 
+  it("entries are compact: {dt, diff} only, with startedAt on the response", () => {
+    const { win, tick } = loadBridge();
+    win.__scummPublish({ schema: 1, seq: 1, room: 5 });
+    win.__scummRecordStart();
+    tick();
+    win.__scummPublish({ schema: 1, seq: 2, room: 6 });
+    tick();
+    const read = win.__scummRecordRead();
+    assert.equal(typeof read.startedAt, "string");
+    assert.match(read.startedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(read.entries.length, 1);
+    const entry = read.entries[0];
+    assert.equal(typeof entry.dt, "number");
+    assert.ok(entry.dt >= 0);
+    // No absolute timestamps in entries — they're derivable from startedAt + dt.
+    assert.equal(entry.t, undefined);
+    assert.equal(entry.ms, undefined);
+    // Only dt and diff should be present.
+    assert.deepEqual(Object.keys(entry).sort(), ["diff", "dt"]);
+  });
+
   it("clamps intervalMs to the minimum", () => {
     const { win } = loadBridge();
     const info = win.__scummRecordStart({ intervalMs: 10 });

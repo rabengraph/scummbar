@@ -703,9 +703,11 @@ function recordTick() {
   const diff = deepDiff(recorder.lastSnapshot, snap, []);
   recorder.lastSnapshot = snap;
   if (diff.length === 0) return;
+  // Only per-entry `dt` (ms offset from startedAt). Absolute ISO / epoch
+  // timestamps are repeated 24+13 chars per entry — enormous at 1000
+  // entries and derivable from the response-level `startedAt`.
   recorder.entries.push({
-    t: nowIso(),
-    ms: Date.now(),
+    dt: Date.now() - recorder.startedAt,
     diff,
   });
   if (recorder.entries.length > RECORD_CAP) {
@@ -769,6 +771,9 @@ window.__scummRecordRead = function recordRead(sinceIndex) {
   const from = Math.max(0, Number(sinceIndex) || 0);
   const slice = recorder.entries.slice(from);
   return {
+    startedAt: recorder.startedAt
+      ? new Date(recorder.startedAt).toISOString()
+      : null,
     entries: slice,
     nextIndex: from + slice.length,
     total: recorder.entries.length,
@@ -859,11 +864,10 @@ window.__scummRecordSummary = function recordSummary(options) {
     return a.ticks - b.ticks;
   });
 
-  const lastMs =
+  const windowMs =
     recorder.entries.length > 0
-      ? recorder.entries[recorder.entries.length - 1].ms
-      : recorder.startedAt || Date.now();
-  const windowMs = recorder.startedAt ? lastMs - recorder.startedAt : 0;
+      ? recorder.entries[recorder.entries.length - 1].dt
+      : 0;
 
   return {
     windowMs,

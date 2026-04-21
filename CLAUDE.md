@@ -145,7 +145,7 @@ pnpm browser:eval -- "location.href='/game?game=monkey1'"
 
 **Act:** `__scummDoSentence({verb, objectA, objectB?})` (preferred — atomic, auto-walks), `__scummSelectDialog(index)`, `__scummSkipMessage()`, `__scummWalkTo(x,y)`, `__scummClickAt(x,y)` (last resort).
 
-**Record:** `__scummRecordStart({intervalMs})` / `__scummRecordStop()` / `__scummRecordSummary({includeAnimation?})` (**preferred read** — net change per path, drops SCUMM animation oscillation) / `__scummRecordRead(sinceIndex?)` (per-tick log, verbose — forensics only) / `__scummRecordStatus()` / `__scummRecordClear()`. Use recording to catch transient changes that don't emit events (triggered object motion, NPC walking a path).
+**Record:** `__scummRecordStart({intervalMs})` / `__scummRecordStop()` / `__scummRecordSummary({includeAnimation?})` (**preferred read** — net change per path, drops SCUMM animation oscillation) / `__scummRecordRead(sinceIndex?)` (per-tick log, verbose — forensics only; entries are `{dt, diff}`, timestamps relative to `startedAt`) / `__scummRecordStatus()` / `__scummRecordClear()`. The event stream is coarse (room/dialog/inventory/cutscene transitions only) — it does NOT emit for NPC movement, transient flavour messages, or per-object state flips. Use the recorder for exact observation of those.
 
 **Check:** `__scummActionsReady()` — call before first action. Check `state.inputLocked` before each action.
 
