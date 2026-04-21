@@ -12,6 +12,10 @@ pnpm-debug.log*
 tools/browser/.browser-*-endpoint
 tools/browser/.chromium-profile/
 
+# E2E agentic test runner — local report output (node_modules already
+# caught by top-level `node_modules/`).
+tests/e2e-agentic/reports/
+
 # Local agent state / saves
 state/
 !state/.gitkeep

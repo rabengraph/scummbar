@@ -1,0 +1,31 @@
+{
+  "name": "conversation-lock",
+  "feature": "PR #16 — Reject non-dialog actions while a conversation is open",
+  "gameId": "monkey1-demo",
+
+  "pretest": [
+    { "kind": "navigate", "path": "/game?game=monkey1-demo" },
+    { "kind": "waitFor", "expression": "typeof __scummActionsReady === 'function' && __scummActionsReady()", "timeoutMs": 30000, "pollMs": 500 },
+    { "kind": "sleep", "ms": 3000 },
+    { "kind": "waitFor", "expression": "(() => { const s = __scummRead(); return s && s.room === 55 && s.inputLocked === false; })()", "timeoutMs": 60000, "pollMs": 500 },
+    { "kind": "eval", "expression": "window.__e2eTestResults = { walkToDuringDialog: null, doSentenceDuringDialog: null, clickAtDuringDialog: null, selectDialogDuringDialog: null, walkToAfter: null, finalRoom: null, finalDialogChoices: null, finalInventory: null, dialogChoiceCountAtCheck: 0, events: [] }; true" }
+  ],
+
+  "agent": {
+    "task": "You are running the conversation-lock E2E test. The game is Monkey Island 1 demo, you are in room 55, and the game is idle.\n\nStep 1 — Navigate to room 57. The archway to room 57 is object 421 in the current room's `roomObjects`. Use `__scummDoSentence({verb: 10, objectA: 421})` (Walk to) to walk through it. Poll `__scummRead().room` with a hard timeout (e.g. `Date.now() - start > 15000`) until it equals 57. If the room does not change within the timeout, retry the doSentence once.\n\nStep 2 — Once in room 57, find the Citizen of Mêlée. They should appear either in `roomObjects` or `actors`. Their id is expected to be 428, but confirm it by inspecting `__scummRead()`. Open a conversation: `__scummDoSentence({verb: 13, objectA: 428})` (Talk to). Poll `__scummRead()` with a hard timeout until `dialogChoices.length > 0`.\n\nStep 3 — With the conversation open (dialogChoices non-empty), record into `window.__e2eTestResults` the return values of these API calls, IN THIS ORDER. Each returns a boolean — capture it exactly as returned, do not coerce.\n```js\n(() => {\n  const r = window.__e2eTestResults;\n  r.dialogChoiceCountAtCheck = __scummRead().dialogChoices.length;\n  r.walkToDuringDialog = __scummWalkTo(100, 100);\n  r.doSentenceDuringDialog = __scummDoSentence({verb: 9, objectA: 428});\n  r.clickAtDuringDialog = __scummClickAt(100, 100);\n  r.selectDialogDuringDialog = __scummSelectDialog(0);\n  return r;\n})()\n```\nThe `selectDialog` call also advances the conversation — that's intentional.\n\nStep 4 — Drive the conversation to completion. Repeatedly:\n- If `__scummRead().haveMsg > 0`, call `__scummSkipMessage()`.\n- Else if `__scummRead().dialogChoices.length > 0`, call `__scummSelectDialog(0)`.\n- Else break.\nBracket with a hard timeout (`Date.now() - start > 30000`). Between calls, wait ~500ms.\n\nStep 5 — Once the conversation is closed, record final observations:\n```js\n(() => {\n  const s = __scummRead();\n  const r = window.__e2eTestResults;\n  r.walkToAfter = __scummWalkTo(100, 100);\n  r.finalRoom = s.room;\n  r.finalDialogChoices = s.dialogChoices.length;\n  r.finalInventory = Array.isArray(s.inventory);\n  return r;\n})()\n```\n\nWhen all five steps are done, stop calling tools and write a one-line summary. The runner will then verify the recorded results.\n\nNotes:\n- All game state is in `window.__scumm*` globals — read the briefing above.\n- The briefing says: while dialogChoices is non-empty, doSentence/walkTo/clickAt must return false; selectDialog and skipMessage must return true.\n- Never write an unbounded polling loop inside an eval. Always bracket with `Date.now() - start > N`.",
+    "maxTurns": 30,
+    "model": "claude-sonnet-4-6"
+  },
+
+  "assertions": [
+    { "name": "dialog_was_open_when_checked", "expression": "window.__e2eTestResults.dialogChoiceCountAtCheck", "predicate": { "gt": 0 } },
+    { "name": "walkTo_rejected_during_dialog",     "expression": "window.__e2eTestResults.walkToDuringDialog",     "predicate": { "equals": false } },
+    { "name": "doSentence_rejected_during_dialog", "expression": "window.__e2eTestResults.doSentenceDuringDialog", "predicate": { "equals": false } },
+    { "name": "clickAt_rejected_during_dialog",    "expression": "window.__e2eTestResults.clickAtDuringDialog",    "predicate": { "equals": false } },
+    { "name": "selectDialog_allowed_during_dialog","expression": "window.__e2eTestResults.selectDialogDuringDialog","predicate": { "equals": true } },
+    { "name": "walkTo_allowed_after_dialog",       "expression": "window.__e2eTestResults.walkToAfter",            "predicate": { "equals": true } },
+    { "name": "dialogChoices_empty_after_dialog",  "expression": "window.__e2eTestResults.finalDialogChoices",     "predicate": { "equals": 0 } },
+    { "name": "inventory_intact",                  "expression": "window.__e2eTestResults.finalInventory",         "predicate": { "equals": true } },
+    { "name": "ended_in_a_sensible_room",          "expression": "window.__e2eTestResults.finalRoom",              "predicate": { "in": [55, 57] } }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "name": "scummbench-e2e-agentic",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Agent-driven E2E tests for ScummBench. Headless Playwright + Claude Agent SDK.",
+  "scripts": {
+    "test": "node run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.40.0",
+    "playwright": "^1.48.0"
+  }
+}
