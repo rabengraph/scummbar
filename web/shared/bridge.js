@@ -565,6 +565,187 @@ window.__scummActionsReady = function actionsReady() {
   );
 };
 
+// --------------------------------------------------------------------------
+// State change recorder — polling-based diff over time
+// --------------------------------------------------------------------------
+// Polls the current snapshot at a configurable interval and buffers a
+// structural diff of every tick that differs from the previous one. Lets
+// agents detect transient changes that don't emit dedicated events — e.g.
+// an NPC walking across the room, an object's bounding box shifting after
+// a trigger fires ("step on the wood, the bird flies away").
+//
+// Typical flow:
+//   __scummRecordStart({ intervalMs: 200 });
+//   __scummDoSentence({ verb, objectA });   // do something
+//   // ...wait...
+//   __scummRecordStop();
+//   const { entries } = __scummRecordRead();
+//
+// Each entry is { t, ms, diff: [{ path, from, to }] } so only what
+// changed between ticks is reported, not the full snapshot.
+
+const RECORD_CAP = 1000;
+const RECORD_DEFAULT_INTERVAL_MS = 200;
+const RECORD_MIN_INTERVAL_MS = 50;
+
+// Top-level fields that change every tick. Skipping them keeps the diff
+// focused on meaningful state (room objects, ego, actors, ...) rather
+// than timestamps/sequence numbers.
+const RECORD_IGNORE_TOP_KEYS = new Set([
+  "receivedAt",
+  "seq",
+  "t",
+  "tick",
+  "schema",
+]);
+
+const recorder = {
+  timer: null,
+  intervalMs: 0,
+  startedAt: null,
+  lastSnapshot: null,
+  entries: [],
+};
+
+function deepDiff(a, b, path) {
+  if (a === b) return [];
+  const aIsObj = a !== null && typeof a === "object";
+  const bIsObj = b !== null && typeof b === "object";
+  if (!aIsObj || !bIsObj || Array.isArray(a) !== Array.isArray(b)) {
+    return [{ path: path.slice(), from: a, to: b }];
+  }
+  const out = [];
+  if (Array.isArray(a)) {
+    const n = Math.max(a.length, b.length);
+    for (let i = 0; i < n; i++) {
+      if (i >= a.length) {
+        out.push({ path: [...path, i], from: undefined, to: b[i], op: "add" });
+      } else if (i >= b.length) {
+        out.push({ path: [...path, i], from: a[i], to: undefined, op: "remove" });
+      } else {
+        const sub = deepDiff(a[i], b[i], [...path, i]);
+        if (sub.length) out.push(...sub);
+      }
+    }
+    return out;
+  }
+  const keys = new Set([...Object.keys(a), ...Object.keys(b)]);
+  for (const k of keys) {
+    if (path.length === 0 && RECORD_IGNORE_TOP_KEYS.has(k)) continue;
+    const sub = deepDiff(a[k], b[k], [...path, k]);
+    if (sub.length) out.push(...sub);
+  }
+  return out;
+}
+
+function recordTick() {
+  const snap = state.latest;
+  if (!snap) return;
+  if (!recorder.lastSnapshot) {
+    recorder.lastSnapshot = snap;
+    return;
+  }
+  if (snap === recorder.lastSnapshot) return;
+  const diff = deepDiff(recorder.lastSnapshot, snap, []);
+  recorder.lastSnapshot = snap;
+  if (diff.length === 0) return;
+  recorder.entries.push({
+    t: nowIso(),
+    ms: Date.now(),
+    diff,
+  });
+  if (recorder.entries.length > RECORD_CAP) {
+    recorder.entries.splice(0, recorder.entries.length - RECORD_CAP);
+  }
+}
+
+/**
+ * Start polling the snapshot and recording diffs between ticks.
+ *
+ * @param {Object} [options]
+ * @param {number} [options.intervalMs=200] - Polling interval in ms (min 50).
+ * @param {boolean} [options.clear=true]    - Clear prior entries before starting.
+ * @returns {{ok:boolean, intervalMs:number, startedAt:string, entries:number}}
+ */
+window.__scummRecordStart = function recordStart(options) {
+  const opts = options || {};
+  const intervalMs = Math.max(
+    RECORD_MIN_INTERVAL_MS,
+    Number(opts.intervalMs) || RECORD_DEFAULT_INTERVAL_MS
+  );
+  if (recorder.timer) clearInterval(recorder.timer);
+  if (opts.clear !== false) recorder.entries = [];
+  recorder.intervalMs = intervalMs;
+  recorder.startedAt = Date.now();
+  recorder.lastSnapshot = state.latest || null;
+  recorder.timer = setInterval(recordTick, intervalMs);
+  return {
+    ok: true,
+    intervalMs,
+    startedAt: new Date(recorder.startedAt).toISOString(),
+    entries: recorder.entries.length,
+  };
+};
+
+/**
+ * Stop polling. Recorded entries remain available via __scummRecordRead().
+ * @returns {{ok:boolean, running:boolean, entries:number, durationMs:number}}
+ */
+window.__scummRecordStop = function recordStop() {
+  const durationMs = recorder.startedAt ? Date.now() - recorder.startedAt : 0;
+  if (recorder.timer) {
+    clearInterval(recorder.timer);
+    recorder.timer = null;
+  }
+  return {
+    ok: true,
+    running: false,
+    entries: recorder.entries.length,
+    durationMs,
+  };
+};
+
+/**
+ * Read recorded diff entries.
+ *
+ * @param {number} [sinceIndex=0] - Return entries at or after this index.
+ * @returns {{entries:object[], nextIndex:number, total:number, running:boolean}}
+ */
+window.__scummRecordRead = function recordRead(sinceIndex) {
+  const from = Math.max(0, Number(sinceIndex) || 0);
+  const slice = recorder.entries.slice(from);
+  return {
+    entries: slice,
+    nextIndex: from + slice.length,
+    total: recorder.entries.length,
+    running: !!recorder.timer,
+  };
+};
+
+/**
+ * Drop all recorded entries. Does not affect running state.
+ * @returns {{ok:boolean, entries:number}}
+ */
+window.__scummRecordClear = function recordClear() {
+  recorder.entries = [];
+  return { ok: true, entries: 0 };
+};
+
+/**
+ * Report whether the recorder is running plus buffer stats.
+ * @returns {{running:boolean, intervalMs:number, startedAt:string|null, entries:number}}
+ */
+window.__scummRecordStatus = function recordStatus() {
+  return {
+    running: !!recorder.timer,
+    intervalMs: recorder.intervalMs,
+    startedAt: recorder.startedAt
+      ? new Date(recorder.startedAt).toISOString()
+      : null,
+    entries: recorder.entries.length,
+  };
+};
+
 // In the absence of a fork build we still want the page to be useful
 // for development. Mirror any initial JSON in #scumm-state into
 // window.__scummState so overlay/panel/tests have something to chew on.

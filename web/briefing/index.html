@@ -53,6 +53,19 @@
       </section>
 
       <section class="brief__section">
+        <h2>Record API — state changes over time</h2>
+        <p>Poll the snapshot at a configurable interval and buffer structural diffs between ticks. Useful for catching transient changes that don't emit events — e.g. an NPC walking, or an object animating after a trigger (step on the wood, the bird flies away). Each entry is only the diff, not the full snapshot.</p>
+        <table>
+          <tr><td><code>__scummRecordStart({intervalMs?, clear?})</code></td><td>Start polling. Default interval 200ms, min 50ms. Clears prior buffer unless <code>clear:false</code>.</td></tr>
+          <tr><td><code>__scummRecordStop()</code></td><td>Stop polling. Entries remain readable.</td></tr>
+          <tr><td><code>__scummRecordRead(sinceIndex?)</code></td><td>Returns <code>{entries, nextIndex, total, running}</code>. Pass <code>nextIndex</code> back for incremental reads.</td></tr>
+          <tr><td><code>__scummRecordStatus()</code></td><td><code>{running, intervalMs, entries, startedAt}</code></td></tr>
+          <tr><td><code>__scummRecordClear()</code></td><td>Drop all buffered entries.</td></tr>
+        </table>
+        <p>Entry shape: <code>{t, ms, diff: [{path, from, to, op?}]}</code> where <code>path</code> is a JSON pointer as an array (e.g. <code>["roomObjects", 3, "box", "x"]</code>) and <code>op</code> is <code>"add"</code> or <code>"remove"</code> on array length changes.</p>
+      </section>
+
+      <section class="brief__section">
         <h2>Action API</h2>
         <table>
           <tr><td><code>__scummDoSentence({verb, objectA, objectB?})</code></td><td>Preferred. Atomic verb+object, auto-walks ego.</td></tr>
@@ -145,7 +158,7 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
 
     <script id="agent-brief" type="application/json">
 {
-  "version": 8,
+  "version": 9,
   "name": "ScummBench",
   "tagline": "Harness for ScummVM games.",
   "mission": "Play the adventure game at /game using the window.__scumm* API. Start with the pre-baked Monkey Island 1 demo or upload your own game.",
@@ -173,6 +186,14 @@ __scummDoSentence({ verb: walk.id, objectA: door.id });
       "__scummSkipMessage()": "Dismiss current dialog text",
       "__scummWalkTo(x, y)": "Walk ego to room coords",
       "__scummClickAt(x, y)": "Last resort click"
+    },
+    "record": {
+      "__scummRecordStart({intervalMs?, clear?})": "Start polling snapshot at intervalMs (default 200, min 50). Buffers a diff per tick.",
+      "__scummRecordStop()": "Stop polling. Entries remain readable.",
+      "__scummRecordRead(sinceIndex?)": "{ entries, nextIndex, total, running } — each entry is { t, ms, diff: [{path, from, to, op?}] }",
+      "__scummRecordStatus()": "{ running, intervalMs, entries, startedAt }",
+      "__scummRecordClear()": "Drop buffered entries",
+      "useFor": "Detect transient changes without dedicated events (NPC movement, object animation after a trigger)."
     }
   },
   "stateFields": [
