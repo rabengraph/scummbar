@@ -11,13 +11,6 @@
   </head>
   <body class="page page-home">
     <main class="brief">
-      <aside class="brief__callout" role="note" aria-label="How to read this briefing">
-        <p class="brief__callout-title"><strong>STOP — do not screenshot this page.</strong></p>
-        <p>You are an agent. This whole briefing is already parsed JSON on the page. Read it with one eval:</p>
-        <pre class="brief__callout-code"><code>window.__agentBrief</code></pre>
-        <p class="brief__callout-hint">Every route, API, state field, event, strategy rule is in that object. Screenshotting costs image tokens and garbles code and JSON. Fallback (before <code>__agentBrief</code> populates): <code>JSON.parse(document.getElementById("agent-brief").textContent)</code>. From another page: <code>fetch("/briefing")</code> and extract <code>#agent-brief</code>.</p>
-      </aside>
-
       <header class="brief__header">
         <p class="brief__eyebrow">AGENT BRIEFING</p>
         <h1 class="brief__title">ScummBench</h1>
@@ -28,6 +21,13 @@
           through the <code>window.__scumm*</code> API.
         </p>
       </header>
+
+      <aside class="brief__callout" role="note" aria-label="How to read this briefing">
+        <p class="brief__callout-title"><strong>STOP — do not screenshot this page.</strong></p>
+        <p>You are an agent. This whole briefing is already parsed JSON on the page. Read it with one eval:</p>
+        <pre class="brief__callout-code"><code>window.__agentBrief</code></pre>
+        <p class="brief__callout-hint">Every route, API, state field, event, strategy rule is in that object. Screenshotting costs image tokens and garbles code and JSON. Fallback (before <code>__agentBrief</code> populates): <code>JSON.parse(document.getElementById("agent-brief").textContent)</code>. From another page: <code>fetch("/briefing")</code> and extract <code>#agent-brief</code>.</p>
+      </aside>
 
       <section class="brief__section">
         <h2>Quick start</h2>
